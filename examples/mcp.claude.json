@@ -1,0 +1,27 @@
+{
+  "//": "Claude Code: one entry per gitlab-mcp deployment. 'type':'http' is required. See docs/auth.md for how the OIDC client config depends on Dynamic Client Registration (DCR).",
+  "mcpServers": {
+    "gitlab": {
+      "//": "OIDC without DCR (e.g. Authentik): give the pre-registered public client_id plus the provider's discovery URL. Browser login on first use; run: claude mcp login gitlab.",
+      "type": "http",
+      "url": "https://gitlab-mcp.example.com/mcp",
+      "oauth": {
+        "clientId": "gitlab-mcp",
+        "authServerMetadataUrl": "https://auth.example.com/application/o/gitlab-mcp/.well-known/openid-configuration"
+      }
+    },
+    "gitlab-dcr": {
+      "//": "OIDC with a DCR-capable provider (e.g. Keycloak): just the URL — the client self-registers.",
+      "type": "http",
+      "url": "https://gitlab-mcp.example.com/mcp"
+    },
+    "gitlab-static": {
+      "//": "Static bearer token, for machine callers.",
+      "type": "http",
+      "url": "https://gitlab-mcp.internal.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITLAB_MCP_TOKEN}"
+      }
+    }
+  }
+}

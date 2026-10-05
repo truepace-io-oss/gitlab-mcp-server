@@ -1,0 +1,25 @@
+# The smallest configuration that runs. Intended for local development only:
+# auth is disabled, so anything that can reach the port can use the server.
+#
+# Even simpler, with no file at all:
+#   GMCP_TOKEN=glpat-… gitlab-mcp
+# which synthesises a single read-only instance against https://gitlab.com.
+
+defaultInstance: gitlab
+
+instances:
+  - name: gitlab
+    url: https://gitlab.com
+    tokenFile: ./token          # a file containing just the PAT
+    allowedNamespaces:
+      - example-group
+    permissions:
+      read:
+        core: true
+        ci: true
+      pipelines:
+        operate: false
+        delete: false
+
+auth:
+  enabled: false

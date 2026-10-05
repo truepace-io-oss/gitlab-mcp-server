@@ -1,0 +1,29 @@
+gitlab-mcp {{ .Chart.AppVersion }} is installed as {{ include "gitlab-mcp.fullname" . }}.
+
+MCP endpoint:
+{{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}/mcp
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gitlab-mcp.fullname" . }} 9090:{{ .Values.service.port }}
+  then http://127.0.0.1:9090/mcp
+{{- end }}
+
+Configured GitLab instances:
+{{- if .Values.instances }}
+{{- range .Values.instances }}
+  - {{ .name }} -> {{ .url }}
+{{- end }}
+{{- else }}
+  (none — set `instances` or no tool will work)
+{{- end }}
+
+Agent authentication: {{ if .Values.auth.enabled }}enabled{{ if .Values.auth.oidc.enabled }} (oidc){{ end }}{{ if .Values.auth.static.enabled }} (static){{ end }}
+{{- else }}DISABLED — the transport is unauthenticated. Only expose it on an
+  internal ingress, or enable auth.{{ end }}
+
+Verify the deployment:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "gitlab-mcp.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "gitlab-mcp.fullname" . }} -- /gitlab-mcp --version
+
+Then ask your agent to call `instances_list` first: it reports reachability, the
+GitLab version, which capabilities are enabled, and when the token expires.

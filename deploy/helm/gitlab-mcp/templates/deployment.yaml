@@ -1,0 +1,107 @@
+{{- $root := . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gitlab-mcp.fullname" . }}
+  labels:
+    {{- include "gitlab-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gitlab-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gitlab-mcp.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "gitlab-mcp.serviceAccountName" . }}
+      {{- if or .Values.imagePullSecret.esoRef .Values.imagePullSecret.existingSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret.existingSecret | default (printf "%s-pull" (include "gitlab-mcp.fullname" .)) }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gitlab-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/etc/gmcp/config.yaml"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gmcp/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- range .Values.instances }}
+            {{- if or (and .token .token.esoRef) (and .token .token.existingSecret) (and .tls .tls.caEsoRef) }}
+            - name: inst-{{ .name }}
+              mountPath: /etc/gmcp/instances/{{ .name }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            {{- range .Values.auth.static.tokens }}
+            - name: auth-{{ .name }}
+              mountPath: /etc/gmcp/auth/{{ .name }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "gitlab-mcp.fullname" . }}
+        {{- range .Values.instances }}
+        {{- if or (and .token .token.esoRef) (and .token .token.existingSecret) (and .tls .tls.caEsoRef) }}
+        - name: inst-{{ .name }}
+          secret:
+            {{- if and .token .token.existingSecret }}
+            secretName: {{ .token.existingSecret }}
+            {{- else }}
+            secretName: {{ include "gitlab-mcp.instanceSecretName" (dict "root" $root "instance" .) }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.auth.enabled }}
+        {{- range .Values.auth.static.tokens }}
+        - name: auth-{{ .name }}
+          secret:
+            secretName: {{ .existingSecret | default (printf "%s-auth-%s" (include "gitlab-mcp.fullname" $root) .name) }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

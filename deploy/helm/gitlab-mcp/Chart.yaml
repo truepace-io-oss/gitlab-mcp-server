@@ -1,0 +1,23 @@
+apiVersion: v2
+name: gitlab-mcp
+description: |
+  MCP (Model Context Protocol) server that lets an AI agent read a GitLab
+  installation and operate its pipelines. Everything except pipelines is
+  read-only, and secret-bearing endpoints (CI/CD variables, pipeline variables,
+  secure files, tokens, deploy keys, webhooks, integrations) are permanently
+  blocked. The GitLab access token is supplied as a mounted file, optionally
+  managed by the External Secrets Operator (ESO).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - mcp
+  - gitlab
+  - ci
+  - pipelines
+  - ai
+home: https://github.com/truepace-io-oss/gitlab-mcp-server
+sources:
+  - https://github.com/truepace-io-oss/gitlab-mcp-server
+maintainers:
+  - name: truepace-io-oss

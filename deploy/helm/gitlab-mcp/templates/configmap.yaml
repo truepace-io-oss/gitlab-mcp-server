@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gitlab-mcp.fullname" . }}
+  labels:
+    {{- include "gitlab-mcp.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    listenAddr: "0.0.0.0:9090"
+    metricsAddr: {{ if .Values.metrics.enabled }}{{ printf ":%v" .Values.metrics.port | quote }}{{ else }}"off"{{ end }}
+    logLevel: {{ .Values.config.logLevel | quote }}
+    readOnly: {{ .Values.config.readOnly }}
+    defaultInstance: {{ .Values.config.defaultInstance | quote }}
+    instances:
+    {{- range .Values.instances }}
+      - name: {{ .name | quote }}
+        url: {{ .url | quote }}
+        {{- if or (and .token .token.esoRef) (and .token .token.existingSecret) }}
+        tokenFile: /etc/gmcp/instances/{{ .name }}/token
+        {{- else if and .token .token.inline }}
+        token: {{ .token.inline | quote }}
+        {{- end }}
+        timeout: {{ default "30s" .timeout | quote }}
+        readOnly: {{ default false .readOnly }}
+        allowedNamespaces: {{ toJson (default (list) .allowedNamespaces) }}
+        {{- $perms := default (dict) .permissions }}
+        {{- $read := default (dict) (get $perms "read") }}
+        {{- $pipe := default (dict) (get $perms "pipelines") }}
+        {{- $page := default (dict) .pagination }}
+        {{- $rate := default (dict) .rateLimit }}
+        permissions:
+          read:
+            core: {{ default false (get $read "core") }}
+            ci: {{ default false (get $read "ci") }}
+          pipelines:
+            operate: {{ default false (get $pipe "operate") }}
+            delete: {{ default false (get $pipe "delete") }}
+            allowVariables: {{ default false (get $pipe "allowVariables") }}
+        pagination:
+          perPage: {{ default 100 (get $page "perPage") }}
+          maxPages: {{ default 10 (get $page "maxPages") }}
+        rateLimit:
+          minRemaining: {{ default 50 (get $rate "minRemaining") }}
+        {{- if and .tls .tls.caEsoRef }}
+        tls:
+          caFile: /etc/gmcp/instances/{{ .name }}/ca.crt
+        {{- end }}
+    {{- end }}
+    {{- if .Values.auth.enabled }}
+    auth:
+      enabled: true
+      static:
+        enabled: {{ .Values.auth.static.enabled }}
+        tokens:
+        {{- range .Values.auth.static.tokens }}
+          - name: {{ .name | quote }}
+            tokenFile: /etc/gmcp/auth/{{ .name }}/token
+        {{- end }}
+      oidc:
+        enabled: {{ .Values.auth.oidc.enabled }}
+        issuer: {{ .Values.auth.oidc.issuer | quote }}
+        audience: {{ .Values.auth.oidc.audience | quote }}
+        resource: {{ .Values.auth.oidc.resource | quote }}
+        jwksUrl: {{ .Values.auth.oidc.jwksUrl | quote }}
+        groupsClaim: {{ .Values.auth.oidc.groupsClaim | quote }}
+        usernameClaim: {{ .Values.auth.oidc.usernameClaim | quote }}
+        resourceMetadata: {{ .Values.auth.oidc.resourceMetadata }}
+        requiredScopes: {{ toJson .Values.auth.oidc.requiredScopes }}
+        requiredGroups: {{ toJson .Values.auth.oidc.requiredGroups }}
+    {{- end }}

@@ -1,0 +1,80 @@
+# gitlab-mcp — example configuration.
+#
+# An "instance" is one GitLab installation, reached over plain outbound HTTPS
+# with a personal access token. Pipelines are the only write surface: projects,
+# repositories, issues and merge requests are read-only, and secret-bearing
+# endpoints are permanently blocked (see docs/permissions.md).
+
+listenAddr: "0.0.0.0:9090"
+metricsAddr: ":9091"          # separate, unauthenticated port; "off" disables it
+logLevel: info                # debug|info|warn|error
+readOnly: false               # global kill-switch for every mutating tool
+
+defaultInstance: gitlab
+
+instances:
+  - name: gitlab
+    url: https://gitlab.example.com
+
+    # The token file is preferred over an inline `token`: it is re-read on every
+    # request, so a rotated secret needs no restart.
+    tokenFile: /etc/gmcp/instances/gitlab/token
+
+    timeout: 30s
+    readOnly: false           # per-instance kill-switch
+
+    # Bound every project- and group-addressing tool to these namespaces.
+    # Leaving this empty lets the server reach everything the token can see.
+    allowedNamespaces:
+      - example-group
+
+    # The capability allowlist. Checked before a request is built, independent
+    # of what the token would permit.
+    permissions:
+      read:
+        core: true            # projects, repos, search, issues, merge requests
+        ci: true              # pipelines, jobs, job logs, schedules, ci_lint
+      pipelines:
+        operate: true         # create / update / retry / cancel, job + schedule control
+        # DELETE of a pipeline needs the Owner role at GitLab and is
+        # irreversible — there is no restore. Keep it off unless you need it.
+        delete: false
+        # Supplying CI variables injects behaviour into a run, so it is opt-in.
+        allowVariables: false
+
+    pagination:
+      perPage: 100
+      maxPages: 10            # a listing stops here and says it was truncated
+
+    rateLimit:
+      minRemaining: 50        # refuse new list traversals below this budget
+
+    # For a self-managed GitLab behind a private CA:
+    # tls:
+    #   caFile: /etc/gmcp/instances/gitlab/ca.crt
+
+# How the AI agent authenticates to THIS server. Independent of the GitLab
+# token: this decides who may call the MCP, the token decides what the MCP may
+# do at GitLab. Leave disabled only behind a trusted internal ingress.
+auth:
+  enabled: false
+  static:
+    enabled: false
+    tokens:
+      - name: ci
+        tokenFile: /etc/gmcp/auth/ci/token   # preferred over an inline `token`
+  oidc:
+    enabled: false
+    issuer: "https://auth.example.com/application/o/gitlab-mcp/"
+    # The expected access-token `aud`. With providers that use the client id as
+    # the audience this is an opaque string, not a URI.
+    audience: "gitlab-mcp"
+    # The RFC 9728 protected-resource identifier: this server's canonical public
+    # URL. Deliberately separate from `audience` — clients bind a token to this
+    # value, so it must be the real URL. Required whenever resourceMetadata is
+    # true; the audience fallback only works if the audience is itself a URI.
+    resource: "https://gitlab-mcp.example.com/mcp"
+    groupsClaim: groups
+    usernameClaim: preferred_username
+    requiredGroups: []
+    resourceMetadata: true

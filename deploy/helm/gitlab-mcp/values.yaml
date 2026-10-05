@@ -1,0 +1,174 @@
+# Default values for gitlab-mcp.
+
+image:
+  repository: ghcr.io/truepace-io-oss/gitlab-mcp-server   # set to ghcr.io/<your-org>/gitlab-mcp-server
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# Image pull secret. When externalSecrets.enabled and imagePullSecret.esoRef are
+# set, a dockerconfigjson Secret is created via ESO; otherwise set an existing
+# secret name in imagePullSecret.existingSecret.
+imagePullSecret:
+  esoRef: ""         # secret-backend key for a dockerconfigjson
+  existingSecret: "" # use a pre-existing pull secret instead
+
+replicaCount: 1
+
+# ---- Server configuration (rendered into a ConfigMap as config.yaml) --------
+config:
+  logLevel: "info"          # debug|info|warn|error
+  readOnly: false           # global kill-switch for all mutating tools
+  defaultInstance: ""       # must match an instance name below
+
+# The GitLab instances this server can reach. Each entry is rendered into
+# config.yaml. The access token is mounted at
+# /etc/gmcp/instances/<name>/token, and an optional private CA at
+# /etc/gmcp/instances/<name>/ca.crt.
+#
+# Pipelines are the only write surface. Secret-bearing endpoints (CI/CD
+# variables, pipeline variables, secure files, access and deploy tokens,
+# webhooks, integrations, runner tokens) are blocked in code and cannot be
+# enabled here.
+instances: []
+  # - name: gitlab
+  #   url: https://gitlab.example.com
+  #   timeout: "30s"
+  #   readOnly: false
+  #   # Bound every project/group-addressing tool to these namespaces. Leaving
+  #   # this empty lets the server reach everything the token can see.
+  #   allowedNamespaces: ["example-group"]
+  #   token:
+  #     esoRef: <backend-uuid>        # ExternalSecret -> key `token` -> mounted tokenFile
+  #     existingSecret: ""            # or a pre-existing Secret containing key `token`
+  #     inline: ""                    # discouraged: not rotatable without a restart
+  #   permissions:
+  #     read:
+  #       core: true                  # projects, repos, search, issues, merge requests
+  #       ci: true                    # pipelines, jobs, job logs, schedules, ci_lint
+  #     pipelines:
+  #       operate: true               # create/update/retry/cancel + job and schedule control
+  #       delete: false               # needs Owner at GitLab and is irreversible
+  #       allowVariables: false       # supplying CI variables injects run behaviour
+  #   pagination: { perPage: 100, maxPages: 10 }
+  #   rateLimit: { minRemaining: 50 }
+  #   tls: { caEsoRef: "" }           # caEsoRef -> ExternalSecret key ca.crt -> mounted caFile
+
+# Prometheus metrics on a SEPARATE, unauthenticated port (never behind the MCP
+# auth or the public ingress). serviceMonitor.enabled requires metrics.enabled.
+metrics:
+  enabled: true
+  port: 9091
+
+# ---- Agent → MCP authentication (client-side link) --------------------------
+# Independent of the GitLab token. Disabled by default (protect via internal ingress).
+# When enabled, always run behind TLS.
+auth:
+  enabled: false
+  # (1) Shared bearer tokens. Each token's secret is provided via ESO (default)
+  #     or an existing Secret; it is mounted at /etc/gmcp/auth/<name>/token.
+  static:
+    enabled: false
+    tokens: []
+      # - name: ci
+      #   eso:
+      #     ref: <backend-uuid>       # ESO ExternalSecret → key `token`
+      # - name: legacy
+      #   existingSecret: my-secret   # must contain key `token`
+  # (2) OIDC resource server (Authentik / Keycloak). Needs no secret — JWKS is
+  #     public.
+  oidc:
+    enabled: false
+    issuer: ""                # Authentik: .../application/o/<slug>/ ; Keycloak: .../realms/<realm>
+    audience: ""              # expected access-token `aud` (often the OIDC client_id)
+    # RFC 9728 protected-resource identifier: this server's canonical public URL.
+    # Deliberately separate from `audience` — clients bind a token to this value.
+    # REQUIRED when resourceMetadata is true: an empty value falls back to
+    # `audience`, which is usually not a URI, and the server refuses to start.
+    resource: ""              # e.g. https://gitlab-mcp.example.com/mcp
+    jwksUrl: ""
+    requiredScopes: []
+    requiredGroups: []
+    groupsClaim: "groups"
+    usernameClaim: "preferred_username"
+    resourceMetadata: true
+
+# ---- External Secrets Operator ---------------------------------------------
+externalSecrets:
+  enabled: true
+  secretStore:
+    kind: ClusterSecretStore      # or SecretStore
+    name: my-secret-store
+  refreshInterval: 1h
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 9090
+
+# Ingress. Disabled by default. The MCP transport has NO built-in auth — only
+# expose it on an internal (e.g. WireGuard) ingress, never publicly.
+ingress:
+  enabled: false
+  className: nginx-internal
+  host: ""                        # e.g. gitlab-mcp.internal.example.com
+  annotations:
+    # Streamable-HTTP needs long-lived, unbuffered connections.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: ""                # defaults to <fullname>-tls
+  # Optional HTTP basic-auth on top of the internal ingress.
+  basicAuth:
+    enabled: false
+    esoRef: ""                    # backend UUID for an htpasswd blob (key: auth)
+    existingSecret: ""
+
+serviceMonitor:
+  enabled: false
+  interval: "30s"
+  scrapeTimeout: "10s"
+  labels: {}
+
+# Grafana dashboard shipped as a ConfigMap the Grafana sidecar auto-discovers
+# (via the label below). Requires the Grafana dashboard sidecar in the cluster.
+grafanaDashboard:
+  enabled: false
+  label: grafana_dashboard      # sidecar discovery label
+  labelValue: "1"
+  folder: ""                    # optional Grafana folder name
+  folderAnnotation: grafana_folder  # annotation key the sidecar reads for the folder
+                                     # (kube-prometheus-stack: grafana_folder ; victoria-metrics-k8s-stack: grafana-folder)
+  namespace: ""                 # optional; default = release namespace
+  extraLabels: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Pod-level security context; the container runs as nonroot with a read-only
+# root filesystem (the distroless image ships no shell). runAsUser is the
+# numeric UID of the distroless "nonroot" user — required so Kubernetes can
+# verify runAsNonRoot (the image's USER is a name, not a number).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

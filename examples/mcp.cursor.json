@@ -1,0 +1,14 @@
+{
+  "//": "Cursor: mcpServers entries use the same shape as Claude Code.",
+  "mcpServers": {
+    "gitlab": {
+      "url": "https://gitlab-mcp.example.com/mcp"
+    },
+    "gitlab-static": {
+      "url": "https://gitlab-mcp.internal.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITLAB_MCP_TOKEN}"
+      }
+    }
+  }
+}
