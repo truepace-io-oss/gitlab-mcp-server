@@ -101,16 +101,29 @@ func run(configPath string) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		// Ready if the default instance is reachable. A degraded secondary
-		// instance must not fail readiness, so only the default is probed.
+		// Readiness means "this process can serve MCP requests", NOT "GitLab is
+		// reachable".
+		//
+		// Tying readiness to an external API looks appealing but is actively
+		// harmful: a bad token or a GitLab outage would take the pod out of the
+		// Service, which removes the ingress route and drops the pod from
+		// metric scraping. The two things that explain the failure —
+		// instances_list and gmcp_instance_up — would both become unreachable
+		// precisely when they are needed. Upstream health belongs in those
+		// signals, not in a probe that gates traffic.
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
-		if _, err := reg.Default().Ping(ctx); err != nil {
-			http.Error(w, "default GitLab instance unreachable: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
+
+		// Report upstream state in the body for a human reading the probe, but
+		// never let it change the status code.
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
+		if status, err := reg.Default().Ping(ctx); err != nil {
+			_, _ = fmt.Fprintf(w, "ready (default GitLab instance %q is NOT reachable: %v — tools will return this error; see gmcp_instance_up)\n",
+				reg.DefaultName(), err)
+			return
+		} else {
+			_, _ = fmt.Fprintf(w, "ready (default GitLab instance %q: %s)\n", reg.DefaultName(), status)
+		}
 	})
 
 	httpSrv := &http.Server{
