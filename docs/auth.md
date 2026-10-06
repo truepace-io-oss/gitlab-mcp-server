@@ -104,6 +104,11 @@ given the pre-registered `client_id` **and** the provider's metadata URL:
 }}}
 ```
 
+The MCP advertises an absolute `resource_metadata` URL in `WWW-Authenticate`, so
+clients can discover the authorization server from the protected-resource
+metadata. An explicit provider metadata URL remains available as a client-side
+override for clients that support it.
+
 Register the localhost redirect URIs the agent will use
 (`http://localhost:\d+/.*`, `http://127.0.0.1:\d+/.*`), make the client public
 with PKCE, and include claims in the access token. Add a `groups` scope mapping

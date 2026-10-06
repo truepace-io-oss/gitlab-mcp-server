@@ -154,7 +154,7 @@ func TestProtectedResourceMetadataUsesResource(t *testing.T) {
 			Enabled:  true,
 			Issuer:   m.iss,
 			Audience: "gitlab-mcp",
-			Resource: "https://observability-mcp.example.com/mcp",
+			Resource: "https://gitlab-mcp.example.com/mcp",
 		},
 	})
 	if err != nil {
@@ -173,7 +173,15 @@ func TestProtectedResourceMetadataUsesResource(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode metadata: %v", err)
 	}
-	if got.Resource != "https://observability-mcp.example.com/mcp" || len(got.AuthorizationServers) != 1 || got.AuthorizationServers[0] != m.iss {
+	if got.Resource != "https://gitlab-mcp.example.com/mcp" || len(got.AuthorizationServers) != 1 || got.AuthorizationServers[0] != m.iss {
 		t.Fatalf("unexpected metadata: %+v", got)
+	}
+
+	unauthenticated := httptest.NewRecorder()
+	b.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unauthenticated request reached handler")
+	})).ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodPost, "https://gitlab-mcp.example.com/mcp", nil))
+	if got, want := unauthenticated.Header().Get("WWW-Authenticate"), `Bearer resource_metadata="https://gitlab-mcp.example.com/.well-known/oauth-protected-resource"`; got != want {
+		t.Fatalf("WWW-Authenticate = %q, want %q", got, want)
 	}
 }
