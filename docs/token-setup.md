@@ -104,6 +104,7 @@ should reach, then grant:
 
 | Resource | Grant | Why |
 |---|---|---|
+| Metadata (Instance) | **Read** | `/version` reachability and version probe |
 | Pipelines | **Create, Read, Update** | start, retry, cancel, rename |
 | Jobs | **Read, Update** | retry, cancel, play, and read job logs |
 | Projects | **Read** | project metadata, `project_resolve` |
@@ -114,6 +115,10 @@ should reach, then grant:
 | Members | **Read** | `members_list` |
 | Groups | **Read** | `groups_list`, `group_get` |
 | Pipeline schedules | **Read, Update** | list, and play a schedule |
+
+Optionally grant **Read** for **Personal access token** at the User boundary if
+you want `instances_list` to report the token's name, permissions and expiry.
+Without it, token introspection degrades gracefully.
 
 Grant **Delete** on Pipelines **only** if you set `pipelines.delete: true`.
 
